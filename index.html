@@ -183,7 +183,7 @@
 
                     <!-- Playful Dodging No Button -->
                     <button id="no-btn" 
-                        class="absolute bottom-0 py-2.5 px-6 bg-slate-200/80 hover:bg-slate-300/80 text-slate-600 font-semibold text-sm rounded-xl backdrop-blur-sm transition-all duration-150 z-20 touch-none">
+                        class="absolute bottom-0 py-2.5 px-6 bg-slate-200/80 hover:bg-slate-300/80 text-slate-600 font-semibold text-sm rounded-xl backdrop-blur-sm z-20 touch-none">
                         No, thanks 😜
                     </button>
 
@@ -392,7 +392,6 @@
 
         // State variables
         let dinnerChoice = true;
-        let yesButtonScale = 1;
 
         // Update Clock
         function updateClock() {
@@ -405,38 +404,62 @@
         setInterval(updateClock, 1000);
         updateClock();
 
-        // Dodging "No" button logic
+        // Instant, fixed-size, proximity-triggered dodging button.
         const noBtn = document.getElementById('no-btn');
         const yesBtn = document.getElementById('yes-btn');
 
         if (noBtn) {
-            const moveNoBtn = (e) => {
-                if (e) e.preventDefault();
-                const container = noBtn.parentElement;
-                const containerRect = container.getBoundingClientRect();
-                const btnRect = noBtn.getBoundingClientRect();
+            const container = noBtn.parentElement;
+            let lastDodge = 0;
+            let previousPosition = null;
+            noBtn.style.transition = 'none';
+            noBtn.style.width = `${noBtn.offsetWidth}px`;
+            noBtn.style.height = `${noBtn.offsetHeight}px`;
+            noBtn.style.transform = 'none';
 
-                const maxX = containerRect.width - btnRect.width;
-                const maxY = containerRect.height - btnRect.height;
+            function dodgeNoButton(event) {
+                if (event && event.cancelable) event.preventDefault();
+                const now = performance.now();
+                if (now - lastDodge < 65) return;
+                lastDodge = now;
 
-                const randomX = Math.floor(Math.random() * Math.max(0, maxX));
-                const randomY = Math.floor(Math.random() * Math.max(0, maxY));
+                const area = container.getBoundingClientRect();
+                const width = noBtn.offsetWidth;
+                const height = noBtn.offsetHeight;
+                const maxX = Math.max(0, area.width - width);
+                const maxY = Math.max(0, area.height - height);
+                const currentX = noBtn.offsetLeft;
+                const currentY = noBtn.offsetTop;
+                let best = {x: 0, y: 0, score: -Infinity};
 
-                noBtn.style.position = 'absolute';
-                noBtn.style.left = `${randomX}px`;
-                noBtn.style.top = `${randomY}px`;
-                noBtn.style.transform = 'scale(1)'; // Ensure "No" button stays normal size
-
-                // Expand the YES button each time No is attempted
-                yesButtonScale += 0.08;
-                if (yesBtn) {
-                    yesBtn.style.transform = `scale(${yesButtonScale})`;
+                for (let i = 0; i < 24; i++) {
+                    const x = Math.random() * maxX;
+                    const y = Math.random() * maxY;
+                    const distance = Math.hypot(x - currentX, y - currentY);
+                    const repeatPenalty = previousPosition ? Math.max(0, 90 - Math.hypot(x - previousPosition.x, y - previousPosition.y)) : 0;
+                    const score = distance - repeatPenalty;
+                    if (score > best.score) best = {x, y, score};
                 }
-            };
+                previousPosition = {x: currentX, y: currentY};
+                noBtn.style.bottom = 'auto';
+                noBtn.style.left = `${best.x}px`;
+                noBtn.style.top = `${best.y}px`;
+            }
 
-            noBtn.addEventListener('mouseenter', moveNoBtn);
-            noBtn.addEventListener('touchstart', moveNoBtn);
-            noBtn.addEventListener('click', moveNoBtn);
+            // Dodge before the pointer actually reaches the button.
+            container.addEventListener('pointermove', (event) => {
+                if (event.pointerType === 'touch') return;
+                const rect = noBtn.getBoundingClientRect();
+                const nearestX = Math.max(rect.left, Math.min(event.clientX, rect.right));
+                const nearestY = Math.max(rect.top, Math.min(event.clientY, rect.bottom));
+                if (Math.hypot(event.clientX - nearestX, event.clientY - nearestY) < 75) {
+                    dodgeNoButton();
+                }
+            });
+            noBtn.addEventListener('pointerenter', dodgeNoButton);
+            noBtn.addEventListener('pointerdown', dodgeNoButton);
+            noBtn.addEventListener('touchstart', dodgeNoButton, {passive: false});
+            noBtn.addEventListener('click', dodgeNoButton);
         }
 
         // Accept Invitation (Step 1 -> Step 2)
